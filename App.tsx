@@ -29,6 +29,24 @@ const HowToUsePanel: React.FC = () => (
             <strong>AI 기능:</strong> Gemini API Key를 설정하면 일정 설명/챗봇이 동작합니다.
           </span>
         </li>
+        <li className="flex items-start">
+          <span className="text-cyan-400 mr-2 mt-1 flex-shrink-0">&#8227;</span>
+          <span>
+            <strong>API 키 발급:</strong> 상단 <strong>API Key 설정</strong> → <strong>키 발급받기</strong> 버튼 → Google 로그인 후 키를 만들고 복사해 붙여넣으세요.
+          </span>
+        </li>
+        <li className="flex items-start">
+          <span className="text-cyan-400 mr-2 mt-1 flex-shrink-0">&#8227;</span>
+          <span>
+            <strong>일정 추가:</strong> 달력 칸에 마우스를 올리면 왼쪽 상단에 <strong>＋</strong> 버튼이 보입니다. 칸/버튼을 클릭해 일정을 추가하세요.
+          </span>
+        </li>
+        <li className="flex items-start">
+          <span className="text-cyan-400 mr-2 mt-1 flex-shrink-0">&#8227;</span>
+          <span>
+            <strong>업무 분류/날짜 이동:</strong> 일정 추가/수정 창에서 업무 분류(예: 예산·급여·지출 등)를 고르고, 날짜 드롭다운으로 다른 날짜로 옮길 수 있습니다. 또는 일정을 드래그&드롭으로 다른 날짜로 옮길 수 있습니다. (수정: 일정 클릭 → AI 보고서 상단 <strong>수정</strong>)
+          </span>
+        </li>
       </ul>
     </div>
   </div>

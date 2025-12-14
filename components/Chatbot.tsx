@@ -22,6 +22,23 @@ const UserIcon: React.FC<{ className?: string }> = ({ className = "w-6 h-6" }) =
   </svg>
 );
 
+const TypingIndicator: React.FC = () => (
+  <div className="flex items-center gap-1.5 px-1 py-1">
+    <span
+      className="h-2 w-2 rounded-full bg-slate-300/80"
+      style={{ animation: 'typingDot 1.2s infinite ease-in-out', animationDelay: '0ms' }}
+    />
+    <span
+      className="h-2 w-2 rounded-full bg-slate-300/80"
+      style={{ animation: 'typingDot 1.2s infinite ease-in-out', animationDelay: '150ms' }}
+    />
+    <span
+      className="h-2 w-2 rounded-full bg-slate-300/80"
+      style={{ animation: 'typingDot 1.2s infinite ease-in-out', animationDelay: '300ms' }}
+    />
+  </div>
+);
+
 
 interface ChatMessage {
   id: string;
@@ -218,7 +235,11 @@ const Chatbot: React.FC<ChatbotProps> = ({ manualContextText }) => {
                   }`}
               >
                 <div className="prose prose-sm prose-invert max-w-none chatbot-message-content">
-                  {renderMessageText(msg.text)}
+                  {!msg.isUser && isLoading && msg.text.trim() === '' ? (
+                    <TypingIndicator />
+                  ) : (
+                    renderMessageText(msg.text)
+                  )}
                 </div>
               </div>
             </div>

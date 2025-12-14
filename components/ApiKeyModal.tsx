@@ -8,6 +8,8 @@ type ApiKeyModalProps = {
   onClear: () => void;
 };
 
+const GOOGLE_AI_STUDIO_API_KEY_URL = 'https://aistudio.google.com/app/apikey';
+
 const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, apiKey, onSave, onClear }) => {
   const [draft, setDraft] = useState(apiKey);
   const [isVisible, setIsVisible] = useState(false);
@@ -78,6 +80,28 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, apiKey, onSa
           </div>
         </div>
 
+        <div className="mt-4 rounded-lg border border-slate-700 bg-slate-800/40 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-100">API 키가 없나요?</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Google AI Studio에서 로그인 후 키를 발급받아 붙여넣으면 됩니다.
+              </p>
+            </div>
+            <a
+              href={GOOGLE_AI_STUDIO_API_KEY_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-shrink-0 bg-slate-700 hover:bg-slate-600 text-white font-semibold py-2 px-3 rounded-lg transition-colors text-sm"
+            >
+              키 발급받기
+            </a>
+          </div>
+          <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
+            안내 화면은 계정 상태에 따라 약관 동의/프로젝트 선택이 한 번 나올 수 있습니다.
+          </p>
+        </div>
+
         <div className="mt-5 flex items-center justify-end gap-2">
           <button
             onClick={handleClear}
@@ -100,4 +124,3 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, apiKey, onSa
 };
 
 export default ApiKeyModal;
-

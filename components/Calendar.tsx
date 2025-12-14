@@ -1,9 +1,10 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { KOREAN_MONTH_NAMES, KOREAN_DAY_NAMES_SHORT } from '../constants';
 import { GoogleGenAI, GenerateContentResponse, GroundingChunk } from "@google/genai";
 import { marked } from 'marked';
 import { useApiKey } from '../contexts/ApiKeyContext';
+import { nanoid } from 'nanoid';
 
 
 const PrevIcon: React.FC = () => (
@@ -38,12 +39,51 @@ const PendingIconMini: React.FC<{ className?: string }> = ({ className = "" }) =
   <div className={`h-4 w-4 rounded-full border-2 border-slate-500 ${className}`}></div>
 );
 
+const PlusIconMini: React.FC<{ className?: string }> = ({ className = "" }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={`w-4 h-4 ${className}`}>
+    <path d="M10 4.5a.75.75 0 01.75.75v4h4a.75.75 0 010 1.5h-4v4a.75.75 0 01-1.5 0v-4h-4a.75.75 0 010-1.5h4v-4A.75.75 0 0110 4.5z" />
+  </svg>
+);
+
+type EventCategory =
+  | '예산'
+  | '급여'
+  | '지출'
+  | '학운위'
+  | '공유재산'
+  | '세입'
+  | '시설'
+  | '물품'
+  | '인사';
+
+const EVENT_CATEGORIES: EventCategory[] = ['예산', '급여', '지출', '학운위', '공유재산', '세입', '시설', '물품', '인사'];
+const DEFAULT_EVENT_CATEGORY: EventCategory = '예산';
+const USER_EVENTS_STORAGE_KEY = 'smartcalendar:userEvents';
+const BUILTIN_EVENT_OVERRIDES_STORAGE_KEY = 'smartcalendar:builtinEventOverrides';
+const BASE_SCHEDULE_END_YEAR = 2029;
+
+type CalendarEventSource = 'builtin' | 'user';
 
 interface CalendarEvent {
   id: string;
   date: string; // YYYY-MM-DD format
   title: string;
+  source: CalendarEventSource;
+  category?: EventCategory;
 }
+
+type UserCalendarEvent = CalendarEvent & {
+  source: 'user';
+  category: EventCategory;
+};
+
+type BuiltinEventOverride = {
+  date?: string;
+  title?: string;
+  category?: EventCategory;
+};
+
+type BuiltinEventOverrides = Record<string, BuiltinEventOverride>;
 
 interface CalendarProps {
   scheduleText: string;
@@ -55,6 +95,101 @@ const formatDateKey = (date: Date): string => {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+const parseDateKeyParts = (dateKey: string) => {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  return { year: y, month: m, day: d }; // month: 1-12
+};
+
+const buildDateKeyFromParts = (year: number, month: number, day: number) => {
+  const safeYear = String(year).padStart(4, '0');
+  const safeMonth = String(month).padStart(2, '0');
+  const safeDay = String(day).padStart(2, '0');
+  return `${safeYear}-${safeMonth}-${safeDay}`;
+};
+
+const isDateKeyLike = (value: unknown): value is string =>
+  typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+
+const isEventCategory = (value: unknown): value is EventCategory =>
+  typeof value === 'string' && EVENT_CATEGORIES.includes(value as EventCategory);
+
+const loadUserEventsFromStorage = (): UserCalendarEvent[] => {
+  try {
+    const raw = localStorage.getItem(USER_EVENTS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+
+    const restored = parsed
+      .map((item): UserCalendarEvent | null => {
+        if (!item || typeof item !== 'object') return null;
+        const candidate = item as Record<string, unknown>;
+        const id = candidate.id;
+        const date = candidate.date;
+        const title = candidate.title;
+        const category = candidate.category;
+
+        if (typeof id !== 'string') return null;
+        if (!isDateKeyLike(date)) return null;
+        if (typeof title !== 'string') return null;
+        if (!isEventCategory(category)) return null;
+
+        return { id, date, title, category, source: 'user' };
+      })
+      .filter((v): v is UserCalendarEvent => Boolean(v));
+
+    return restored;
+  } catch {
+    return [];
+  }
+};
+
+const saveUserEventsToStorage = (events: UserCalendarEvent[]) => {
+  try {
+    const payload = events.map(({ id, date, title, category }) => ({ id, date, title, category }));
+    localStorage.setItem(USER_EVENTS_STORAGE_KEY, JSON.stringify(payload));
+  } catch {
+    // ignore storage errors (e.g., private mode / quota)
+  }
+};
+
+const loadBuiltinEventOverridesFromStorage = (): BuiltinEventOverrides => {
+  try {
+    const raw = localStorage.getItem(BUILTIN_EVENT_OVERRIDES_STORAGE_KEY);
+    if (!raw) return {};
+
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+
+    const overrides: BuiltinEventOverrides = {};
+    for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+      const candidate = value as Record<string, unknown>;
+
+      const nextOverride: BuiltinEventOverride = {};
+      if (isDateKeyLike(candidate.date)) nextOverride.date = candidate.date;
+      if (typeof candidate.title === 'string' && candidate.title.trim()) nextOverride.title = candidate.title.trim();
+      if (isEventCategory(candidate.category)) nextOverride.category = candidate.category;
+
+      if (nextOverride.date || nextOverride.title || nextOverride.category) {
+        overrides[id] = nextOverride;
+      }
+    }
+
+    return overrides;
+  } catch {
+    return {};
+  }
+};
+
+const saveBuiltinEventOverridesToStorage = (overrides: BuiltinEventOverrides) => {
+  try {
+    localStorage.setItem(BUILTIN_EVENT_OVERRIDES_STORAGE_KEY, JSON.stringify(overrides));
+  } catch {
+    // ignore storage errors (e.g., private mode / quota)
+  }
 };
 
 const loadingMessages = [
@@ -69,7 +204,24 @@ const loadingMessages = [
 const Calendar: React.FC<CalendarProps> = ({ scheduleText, manualContextText }) => {
   const { apiKey } = useApiKey();
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [baseEvents, setBaseEvents] = useState<CalendarEvent[]>([]);
+  const [builtinEventOverrides, setBuiltinEventOverrides] = useState<BuiltinEventOverrides>({});
+  const baseEventsWithOverrides = useMemo(
+    () =>
+      baseEvents.map((ev) => {
+        const override = builtinEventOverrides[ev.id];
+        if (!override) return ev;
+        return {
+          ...ev,
+          date: override.date ?? ev.date,
+          title: override.title ?? ev.title,
+          category: override.category ?? ev.category,
+        };
+      }),
+    [baseEvents, builtinEventOverrides],
+  );
+  const [userEvents, setUserEvents] = useState<UserCalendarEvent[]>([]);
+  const allEvents = useMemo(() => [...baseEventsWithOverrides, ...userEvents], [baseEventsWithOverrides, userEvents]);
   
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [eventDescriptions, setEventDescriptions] = useState<Record<string, string>>({});
@@ -81,6 +233,21 @@ const Calendar: React.FC<CalendarProps> = ({ scheduleText, manualContextText }) 
   const [isLoadingSchedule, setIsLoadingSchedule] = useState(true);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
+  const [draggingEventId, setDraggingEventId] = useState<string | null>(null);
+  const [dragOverDateKey, setDragOverDateKey] = useState<string | null>(null);
+  const didJustDropRef = useRef(false);
+
+  const now = new Date();
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [editorMode, setEditorMode] = useState<'create' | 'edit'>('create');
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [draftSource, setDraftSource] = useState<CalendarEventSource>('user');
+  const [draftTitle, setDraftTitle] = useState('');
+  const [draftCategory, setDraftCategory] = useState<EventCategory | ''>(DEFAULT_EVENT_CATEGORY);
+  const [draftYear, setDraftYear] = useState<number>(now.getFullYear());
+  const [draftMonth, setDraftMonth] = useState<number>(now.getMonth() + 1); // 1-12
+  const [draftDay, setDraftDay] = useState<number>(now.getDate());
+  const [draftError, setDraftError] = useState<string | null>(null);
 
 
   let ai: GoogleGenAI | null = null;
@@ -91,18 +258,34 @@ const Calendar: React.FC<CalendarProps> = ({ scheduleText, manualContextText }) 
   }
 
   useEffect(() => {
+    setUserEvents(loadUserEventsFromStorage());
+  }, []);
+
+  useEffect(() => {
+    saveUserEventsToStorage(userEvents);
+  }, [userEvents]);
+
+  useEffect(() => {
+    setBuiltinEventOverrides(loadBuiltinEventOverridesFromStorage());
+  }, []);
+
+  useEffect(() => {
+    saveBuiltinEventOverridesToStorage(builtinEventOverrides);
+  }, [builtinEventOverrides]);
+
+  useEffect(() => {
     const parseScheduleData = (textData: string) => {
       setIsLoadingSchedule(true);
       setScheduleError(null);
       
       const currentSystemYear = new Date().getFullYear();
-      const endYear = 2029; // Display events up to this year
+      const endYear = BASE_SCHEDULE_END_YEAR; // Display events up to this year
       const newEvents: CalendarEvent[] = [];
       let eventIdCounter = 1;
 
       if (!textData || textData.trim() === '') {
         setScheduleError("제공된 일정 데이터가 비어있습니다.");
-        setEvents([]);
+        setBaseEvents([]);
         setIsLoadingSchedule(false);
         return;
       }
@@ -111,7 +294,7 @@ const Calendar: React.FC<CalendarProps> = ({ scheduleText, manualContextText }) 
 
       if (lines.length === 0) {
         setScheduleError("일정 데이터에 파싱할 내용이 없습니다.");
-        setEvents([]);
+        setBaseEvents([]);
         setIsLoadingSchedule(false);
         return;
       }
@@ -141,6 +324,7 @@ const Calendar: React.FC<CalendarProps> = ({ scheduleText, manualContextText }) 
                       id: `event-${yearToCreate}-${monthIdx + 1}-${day}-${title.substring(0,10).replace(/[^a-zA-Z0-9ㄱ-ㅎㅏ-ㅣ가-힣-]/g, '')}-${eventIdCounter++}`,
                       date: formatDateKey(eventDate),
                       title: title,
+                      source: 'builtin',
                     });
                   }
                 });
@@ -156,7 +340,7 @@ const Calendar: React.FC<CalendarProps> = ({ scheduleText, manualContextText }) 
         }
       });
       
-      setEvents(newEvents);
+      setBaseEvents(newEvents);
 
       if (lines.length > 0 && newEvents.length === 0) {
         setScheduleError("제공된 일정 데이터에서 유효한 일정을 찾지 못했습니다. 데이터 형식(예: 1월 ; 1일 ; 내용)을 확인해주세요.");
@@ -212,7 +396,8 @@ const Calendar: React.FC<CalendarProps> = ({ scheduleText, manualContextText }) 
     setLoadingStep(0); 
     setGenerationError(null);
     try {
-      let prompt = `다음 달력 일정에 대해 설명해주세요: '${event.title}'.
+      let prompt = `다음 달력 일정에 대해 설명해주세요: '${event.title}'${event.category ? ` (업무 분류: ${event.category})` : ''}.
+일정 날짜: ${event.date}
 응답은 다음 최대 세 부분으로 명확히 구분하여 작성해주세요 (해당하는 내용이 없을 경우 해당 부분은 생략 가능합니다):
 
 1.  **업무/일정 설명**: 이 업무 또는 일정에 대한 자세한 설명을 제공해주세요. (3-4 문장)
@@ -291,6 +476,239 @@ ${manualContextText}
     }
   };
 
+  const clearAiCacheForEvent = useCallback((eventId: string) => {
+    setEventDescriptions(prev => {
+      if (!prev[eventId]) return prev;
+      const next = { ...prev };
+      delete next[eventId];
+      return next;
+    });
+    setEventGrounding(prev => {
+      if (!prev[eventId]) return prev;
+      const next = { ...prev };
+      delete next[eventId];
+      return next;
+    });
+  }, []);
+
+  const moveEventToDate = useCallback(
+    (eventId: string, nextDateKey: string) => {
+      if (!eventId) return;
+      if (!isDateKeyLike(nextDateKey)) return;
+
+      const userEvent = userEvents.find(ev => ev.id === eventId);
+      if (userEvent) {
+        if (userEvent.date === nextDateKey) return;
+        setUserEvents(prev => prev.map(ev => (ev.id === eventId ? { ...ev, date: nextDateKey } : ev)));
+        clearAiCacheForEvent(eventId);
+        setSelectedEvent(prev => (prev && prev.id === eventId ? { ...prev, date: nextDateKey } : prev));
+        return;
+      }
+
+      const baseEvent = baseEvents.find(ev => ev.id === eventId);
+      if (!baseEvent) return;
+
+      if (baseEvent.date === nextDateKey) {
+        setBuiltinEventOverrides(prev => {
+          const existing = prev[eventId];
+          if (!existing) return prev;
+
+          const nextEntry: BuiltinEventOverride = { ...existing };
+          delete nextEntry.date;
+
+          const next = { ...prev };
+          if (!nextEntry.date && !nextEntry.title && !nextEntry.category) {
+            delete next[eventId];
+          } else {
+            next[eventId] = nextEntry;
+          }
+          return next;
+        });
+      } else {
+        setBuiltinEventOverrides(prev => {
+          const existing = prev[eventId];
+          const nextEntry: BuiltinEventOverride = { ...(existing ?? {}) };
+          nextEntry.date = nextDateKey;
+
+          const next = { ...prev };
+          next[eventId] = nextEntry;
+          return next;
+        });
+      }
+
+      clearAiCacheForEvent(eventId);
+      setSelectedEvent(prev => (prev && prev.id === eventId ? { ...prev, date: nextDateKey } : prev));
+    },
+    [userEvents, baseEvents, clearAiCacheForEvent],
+  );
+
+  const openCreateEditor = (dateKey: string) => {
+    const { year: y, month: m, day: d } = parseDateKeyParts(dateKey);
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return;
+
+    setEditorMode('create');
+    setDraftId(null);
+    setDraftSource('user');
+    setDraftTitle('');
+    setDraftCategory(DEFAULT_EVENT_CATEGORY);
+    setDraftYear(y);
+    setDraftMonth(m);
+    setDraftDay(d);
+    setDraftError(null);
+    setIsEditorOpen(true);
+  };
+
+  const openEditEditor = (event: CalendarEvent) => {
+    const { year: y, month: m, day: d } = parseDateKeyParts(event.date);
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return;
+
+    setEditorMode('edit');
+    setDraftId(event.id);
+    setDraftSource(event.source);
+    setDraftTitle(event.title);
+    setDraftCategory(event.source === 'user' ? (event.category ?? DEFAULT_EVENT_CATEGORY) : (event.category ?? ''));
+    setDraftYear(y);
+    setDraftMonth(m);
+    setDraftDay(d);
+    setDraftError(null);
+    setIsEditorOpen(true);
+  };
+
+  const closeEditor = () => {
+    setIsEditorOpen(false);
+    setDraftError(null);
+  };
+
+  const draftDaysInMonth = useMemo(() => new Date(draftYear, draftMonth, 0).getDate(), [draftYear, draftMonth]);
+
+  useEffect(() => {
+    if (draftDay > draftDaysInMonth) {
+      setDraftDay(draftDaysInMonth);
+    }
+  }, [draftDay, draftDaysInMonth]);
+
+  const yearOptions = useMemo(() => {
+    const currentSystemYear = new Date().getFullYear();
+    const start = Math.min(currentSystemYear, draftYear);
+    const end = Math.max(BASE_SCHEDULE_END_YEAR, currentSystemYear + 2, draftYear);
+    return Array.from({ length: end - start + 1 }, (_, idx) => start + idx);
+  }, [draftYear]);
+
+  const handleSaveDraft = () => {
+    const cleanedTitle = draftTitle.trim();
+    if (!cleanedTitle) {
+      setDraftError("일정 내용을 입력해주세요.");
+      return;
+    }
+
+    const dateKey = buildDateKeyFromParts(draftYear, draftMonth, draftDay);
+    const dateObj = new Date(draftYear, draftMonth - 1, draftDay);
+    if (Number.isNaN(dateObj.getTime()) || formatDateKey(dateObj) !== dateKey) {
+      setDraftError("유효한 날짜를 선택해주세요.");
+      return;
+    }
+
+    if (editorMode === 'create') {
+      const category = isEventCategory(draftCategory) ? draftCategory : null;
+      if (!category) {
+        setDraftError("업무를 선택해주세요.");
+        return;
+      }
+
+      const newEvent: UserCalendarEvent = {
+        id: `user-${nanoid(10)}`,
+        date: dateKey,
+        title: cleanedTitle,
+        category,
+        source: 'user',
+      };
+      setUserEvents(prev => [newEvent, ...prev]);
+      closeEditor();
+      return;
+    }
+
+    if (!draftId) {
+      setDraftError("수정할 일정이 선택되지 않았습니다.");
+      return;
+    }
+
+    if (draftSource === 'user') {
+      const category = isEventCategory(draftCategory) ? draftCategory : null;
+      if (!category) {
+        setDraftError("업무를 선택해주세요.");
+        return;
+      }
+
+      setUserEvents(prev =>
+        prev.map(ev =>
+          ev.id === draftId
+            ? ({ ...ev, date: dateKey, title: cleanedTitle, category, source: 'user' } as UserCalendarEvent)
+            : ev
+        )
+      );
+      clearAiCacheForEvent(draftId);
+      closeEditor();
+      return;
+    }
+
+    setBuiltinEventOverrides(prev => {
+      const base = baseEvents.find(ev => ev.id === draftId);
+      if (!base) return prev;
+
+      const existing = prev[draftId];
+      const nextEntry: BuiltinEventOverride = { ...(existing ?? {}) };
+
+      if (dateKey === base.date) {
+        delete nextEntry.date;
+      } else {
+        nextEntry.date = dateKey;
+      }
+
+      if (cleanedTitle === base.title) {
+        delete nextEntry.title;
+      } else {
+        nextEntry.title = cleanedTitle;
+      }
+
+      if (isEventCategory(draftCategory)) {
+        nextEntry.category = draftCategory;
+      } else {
+        delete nextEntry.category;
+      }
+
+      const next = { ...prev };
+      if (!nextEntry.date && !nextEntry.title && !nextEntry.category) {
+        delete next[draftId];
+      } else {
+        next[draftId] = nextEntry;
+      }
+      return next;
+    });
+    clearAiCacheForEvent(draftId);
+    closeEditor();
+  };
+
+  const handleDeleteDraft = () => {
+    if (!draftId) return;
+
+    if (draftSource === 'builtin') {
+      setBuiltinEventOverrides(prev => {
+        const existing = prev[draftId];
+        if (!existing) return prev;
+        const next = { ...prev };
+        delete next[draftId];
+        return next;
+      });
+      clearAiCacheForEvent(draftId);
+      closeEditor();
+      return;
+    }
+
+    setUserEvents(prev => prev.filter(ev => ev.id !== draftId));
+    clearAiCacheForEvent(draftId);
+    closeEditor();
+  };
+
   const toggleDayExpansion = (dateKey: string) => {
     setExpandedDays(prev => {
       const newSet = new Set(prev);
@@ -348,16 +766,45 @@ ${manualContextText}
       const isToday = day === today.getDate() && month === today.getMonth() && year === today.getFullYear();
       const cellDate = new Date(year, month, day);
       const dateKey = formatDateKey(cellDate);
-      const dayEvents = events.filter(event => event.date === dateKey);
+      const dayEvents = allEvents.filter(event => event.date === dateKey);
       const isExpanded = expandedDays.has(dateKey);
       const eventsToShow = isExpanded ? dayEvents : dayEvents.slice(0, MAX_EVENTS_VISIBLE);
 
       days.push(
         <div
           key={day}
-          aria-label={`${KOREAN_MONTH_NAMES[month]} ${day}일, ${year}. ${dayEvents.length}개의 이벤트.`}
+          aria-label={`${KOREAN_MONTH_NAMES[month]} ${day}일, ${year}. ${dayEvents.length}개의 일정. 클릭하여 일정 추가.`}
+          onClick={() => {
+            if (draggingEventId) return;
+            if (didJustDropRef.current) return;
+            openCreateEditor(dateKey);
+          }}
+          onDragOver={(e) => {
+            if (!draggingEventId) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            setDragOverDateKey(dateKey);
+          }}
+          onDragLeave={() => {
+            setDragOverDateKey(prev => (prev === dateKey ? null : prev));
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const droppedId = e.dataTransfer.getData('text/plain');
+            if (droppedId) {
+              moveEventToDate(droppedId, dateKey);
+            }
+            didJustDropRef.current = true;
+            window.setTimeout(() => {
+              didJustDropRef.current = false;
+            }, 0);
+            setDraggingEventId(null);
+            setDragOverDateKey(null);
+          }}
           className={`
             p-2 border rounded-lg 
+            relative group cursor-pointer
             flex flex-col items-start justify-start 
             text-left 
             transition-all duration-200 ease-in-out transform
@@ -366,8 +813,28 @@ ${manualContextText}
               ? 'bg-cyan-600/20 border-cyan-500 shadow-xl scale-[1.01]'
               : 'bg-slate-700 border-slate-600 shadow-lg hover:bg-slate-600/70 hover:shadow-2xl hover:scale-[1.01]'
             }
+            ${dragOverDateKey === dateKey ? 'ring-2 ring-cyan-400 ring-offset-2 ring-offset-slate-900' : ''}
           `}
         >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              openCreateEditor(dateKey);
+            }}
+            className={`absolute top-1 left-1 p-1 rounded-md border transition-all
+              opacity-0 pointer-events-none
+              group-hover:opacity-100 group-hover:pointer-events-auto
+              group-focus-within:opacity-100 group-focus-within:pointer-events-auto
+              ${isToday
+                ? 'bg-cyan-500/20 border-cyan-400/40 text-cyan-200 hover:bg-cyan-500/30'
+                : 'bg-slate-800/40 border-slate-500/40 text-slate-200 hover:bg-slate-800/60'
+              }`}
+            aria-label="일정 추가"
+            title="일정 추가"
+          >
+            <PlusIconMini />
+          </button>
           <span className={`
             text-xs sm:text-sm font-medium self-end
             ${isToday ? 'text-cyan-100 font-bold' : 'text-slate-400'}
@@ -375,20 +842,55 @@ ${manualContextText}
             {day}
           </span>
           <div className="w-full mt-1 space-y-1 overflow-y-auto flex-grow flex flex-col">
-            {eventsToShow.map((event) => (
-              <button 
-                key={event.id} 
-                onClick={() => handleEventClick(event)}
-                className="text-left w-full text-xs p-1 bg-teal-800/70 hover:bg-teal-700/70 rounded text-teal-100 truncate transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500"
-                title={event.title}
-                aria-label={`일정: ${event.title}. 상세보기`}
-              >
-                {event.title}
-              </button>
-            ))}
+            {eventsToShow.map((event) => {
+              const isUser = event.source === 'user';
+              const hasCategory = Boolean(event.category);
+              return (
+                <button
+                  key={event.id}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleEventClick(event);
+                  }}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('text/plain', event.id);
+                    e.dataTransfer.effectAllowed = 'move';
+                    setDraggingEventId(event.id);
+                  }}
+                  onDragEnd={() => {
+                    setDraggingEventId(null);
+                    setDragOverDateKey(null);
+                  }}
+                  className={`text-left w-full text-xs p-1 rounded transition-colors focus:outline-none focus:ring-2 truncate
+                    ${isUser
+                      ? 'bg-sky-700/70 hover:bg-sky-600/70 text-sky-100 focus:ring-sky-500'
+                      : 'bg-teal-800/70 hover:bg-teal-700/70 text-teal-100 focus:ring-teal-500'
+                    } cursor-grab active:cursor-grabbing`}
+                  title={event.title}
+                  aria-label={`일정: ${event.title}. AI 보고서 보기. 드래그하여 날짜 이동`}
+                >
+                  <span className="flex items-center gap-1 min-w-0">
+                    {hasCategory && (
+                      <span
+                        className={`text-[10px] px-1 py-0.5 rounded bg-black/20 flex-shrink-0 ${isUser ? 'text-sky-50' : 'text-teal-50'}`}
+                      >
+                        {event.category}
+                      </span>
+                    )}
+                    <span className="truncate">{event.title}</span>
+                  </span>
+                </button>
+              );
+            })}
             {!isExpanded && dayEvents.length > MAX_EVENTS_VISIBLE && (
               <button 
-                onClick={() => toggleDayExpansion(dateKey)}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleDayExpansion(dateKey);
+                }}
                 className="text-xs text-cyan-400 hover:text-cyan-300 mt-1 py-0.5 w-full text-center rounded hover:bg-slate-600/50 transition-colors"
                 aria-label={`${dayEvents.length - MAX_EVENTS_VISIBLE}개 일정 더 보기`}
               >
@@ -397,7 +899,11 @@ ${manualContextText}
             )}
             {isExpanded && dayEvents.length > MAX_EVENTS_VISIBLE && (
               <button 
-                onClick={() => toggleDayExpansion(dateKey)}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleDayExpansion(dateKey);
+                }}
                 className="text-xs text-slate-400 hover:text-slate-300 mt-1 py-0.5 w-full text-center rounded hover:bg-slate-600/50 transition-colors"
                 aria-label="일정 간략히 보기"
               >
@@ -495,15 +1001,31 @@ ${manualContextText}
           <div className="flex justify-between items-start mb-4 flex-shrink-0 gap-3">
             <div className="min-w-0">
               <h3 id="event-modal-title" className="text-lg font-semibold text-cyan-400 truncate">{selectedEvent.title}</h3>
-              <p className="text-xs text-slate-400 mt-0.5">AI 보고서</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                AI 보고서
+                {selectedEvent.category ? ` · ${selectedEvent.category}` : ''}
+              </p>
             </div>
-            <button 
-              onClick={() => setSelectedEvent(null)}
-              className="p-1 text-slate-400 hover:text-slate-200 transition-colors rounded-full hover:bg-slate-700"
-              aria-label="팝업 닫기"
-            >
-              <CloseIcon/>
-            </button>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedEvent(null);
+                  openEditEditor(selectedEvent);
+                }}
+                className="bg-slate-700 hover:bg-slate-600 text-white font-semibold py-1.5 px-3 rounded-lg transition-colors text-sm"
+              >
+                수정
+              </button>
+              <button 
+                onClick={() => setSelectedEvent(null)}
+                className="p-1 text-slate-400 hover:text-slate-200 transition-colors rounded-full hover:bg-slate-700"
+                aria-label="팝업 닫기"
+                type="button"
+              >
+                <CloseIcon/>
+              </button>
+            </div>
           </div>
           
           <div className="overflow-y-auto flex-grow pr-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-blue-700 hover:scrollbar-thumb-blue-600 active:scrollbar-thumb-blue-500 scrollbar-thumb-rounded-md">
@@ -610,6 +1132,171 @@ ${manualContextText}
     );
   };
 
+  const renderEditorModal = (): React.ReactNode => {
+    if (!isEditorOpen) return null;
+
+    const modalTitle =
+      editorMode === 'create'
+        ? '일정 추가'
+        : draftSource === 'builtin'
+          ? '기본 일정 수정'
+          : '일정 수정';
+    const monthOptions = Array.from({ length: 12 }, (_, idx) => idx + 1);
+    const dayOptions = Array.from({ length: draftDaysInMonth }, (_, idx) => idx + 1);
+
+    return (
+      <div
+        className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+        onClick={closeEditor}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="event-editor-title"
+      >
+        <div
+          className="bg-slate-800 p-5 sm:p-6 rounded-lg shadow-2xl w-full max-w-lg flex flex-col text-slate-100 border border-slate-700"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex justify-between items-start gap-3">
+            <div className="min-w-0">
+              <h3 id="event-editor-title" className="text-lg font-semibold text-cyan-400">{modalTitle}</h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                업무 분류를 선택하고 일정을 입력하세요. (드래그&드롭으로도 날짜 이동 가능)
+              </p>
+              {draftSource === 'builtin' && (
+                <p className="text-[11px] text-slate-500 mt-1">
+                  기본 일정 수정은 이 브라우저에만 저장됩니다.
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={closeEditor}
+              className="p-1 text-slate-400 hover:text-slate-200 transition-colors rounded-full hover:bg-slate-700"
+              aria-label="팝업 닫기"
+            >
+              <CloseIcon />
+            </button>
+          </div>
+
+          <div className="mt-4 space-y-4">
+            <div>
+              <label className="text-sm text-slate-200 block mb-1">날짜</label>
+              <div className="grid grid-cols-3 gap-2">
+                <select
+                  value={draftYear}
+                  onChange={(e) => setDraftYear(Number(e.target.value))}
+                  className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none"
+                  aria-label="연도 선택"
+                >
+                  {yearOptions.map(y => (
+                    <option key={y} value={y}>{y}년</option>
+                  ))}
+                </select>
+                <select
+                  value={draftMonth}
+                  onChange={(e) => setDraftMonth(Number(e.target.value))}
+                  className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none"
+                  aria-label="월 선택"
+                >
+                  {monthOptions.map(m => (
+                    <option key={m} value={m}>{m}월</option>
+                  ))}
+                </select>
+                <select
+                  value={draftDay}
+                  onChange={(e) => setDraftDay(Number(e.target.value))}
+                  className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none"
+                  aria-label="일 선택"
+                >
+                  {dayOptions.map(d => (
+                    <option key={d} value={d}>{d}일</option>
+                  ))}
+                </select>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">드롭다운으로 날짜를 바꾸면 일정 날짜를 옮길 수 있습니다.</p>
+            </div>
+
+            <div>
+              <label className="text-sm text-slate-200 block mb-1" htmlFor="event-category">
+                업무
+              </label>
+              <select
+                id="event-category"
+                value={draftCategory}
+                onChange={(e) => setDraftCategory(e.target.value as EventCategory | '')}
+                className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none"
+              >
+                <option value="">업무 선택(선택)</option>
+                {EVENT_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-sm text-slate-200 block mb-1" htmlFor="event-title">
+                일정 내용
+              </label>
+              <input
+                id="event-title"
+                value={draftTitle}
+                onChange={(e) => setDraftTitle(e.target.value)}
+                placeholder="예: 교육비특별회계 결산 마감"
+                className="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none placeholder-slate-600"
+                autoFocus
+              />
+              {draftError && (
+                <div className="mt-2 text-xs text-red-300 bg-red-900/20 border border-red-700 p-2 rounded-md">
+                  {draftError}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-5 flex items-center justify-between gap-3">
+            {editorMode === 'edit' ? (
+              draftSource === 'user' ? (
+                <button
+                  type="button"
+                  onClick={handleDeleteDraft}
+                  className="bg-red-600 hover:bg-red-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+                >
+                  삭제
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleDeleteDraft}
+                  className="bg-slate-700 hover:bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+                >
+                  기본값으로 되돌리기
+                </button>
+              )
+            ) : (
+              <div />
+            )}
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                type="button"
+                onClick={closeEditor}
+                className="bg-slate-700 hover:bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveDraft}
+                className="bg-cyan-600 hover:bg-cyan-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+              >
+                저장
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
 
   return (
     <div className="bg-slate-800 px-4 sm:px-6 py-3 sm:py-5 rounded-xl shadow-2xl flex flex-col w-full h-full border border-slate-700">
@@ -625,7 +1312,7 @@ ${manualContextText}
           <p className="text-xs mt-1">앱 코드 내 일정 데이터 형식을 확인해주세요.</p>
         </div>
       )}
-      {!isLoadingSchedule && !scheduleError && events.length === 0 && (
+      {!isLoadingSchedule && !scheduleError && allEvents.length === 0 && (
            <div className="text-center p-2 text-sm text-slate-400 my-1">
               표시할 일정이 없습니다. 앱 코드 내에 일정을 추가해주세요.
           </div>
@@ -634,6 +1321,7 @@ ${manualContextText}
       {renderDaysOfWeek()}
       {renderCalendarCells()}
       {renderEventModal()}
+      {renderEditorModal()}
     </div>
   );
 };
