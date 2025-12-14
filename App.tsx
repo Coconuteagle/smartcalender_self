@@ -1,14 +1,10 @@
 import React, { useState } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
 import Calendar from './components/Calendar';
 import Chatbot from './components/Chatbot';
-import Payment from './components/Payment';
-import SuccessPage from './components/SuccessPage';
-import FailPage from './components/FailPage';
 import { scheduleData } from './data/scheduleData';
 import { manualData } from './data/manualData';
 import ApiKeyModal from './components/ApiKeyModal';
-import { useApiKey, ApiKeyProvider } from './contexts/ApiKeyContext';
+import { useApiKey } from './contexts/ApiKeyContext';
 
 const HowToUsePanel: React.FC = () => (
   <div className="bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg border border-slate-700 h-full flex flex-col">
@@ -24,7 +20,7 @@ const HowToUsePanel: React.FC = () => (
         <li className="flex items-start">
           <span className="text-cyan-400 mr-2 mt-1 flex-shrink-0">&#8227;</span>
           <span>
-            <strong>일정 확인:</strong> 날짜를 클릭하면 상세 내용을 보고 AI 설명을 받을 수 있습니다.
+            <strong>일정 확인:</strong> 날짜/일정을 클릭하면 AI 보고서(업무 설명·처리절차)를 볼 수 있습니다.
           </span>
         </li>
         <li className="flex items-start">
@@ -87,15 +83,7 @@ const MainLayout = () => (
 );
 
 const App: React.FC = () => {
-  return (
-    <Routes>
-      <Route path="/payment" element={<Payment />} />
-      <Route path="/success" element={<SuccessPage />} />
-      <Route path="/fail" element={<FailPage />} />
-      <Route path="/" element={<MainLayout />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
-  );
+  return <MainLayout />;
 };
 
 export default App;

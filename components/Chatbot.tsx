@@ -22,8 +22,6 @@ const UserIcon: React.FC<{ className?: string }> = ({ className = "w-6 h-6" }) =
   </svg>
 );
 
-);
-
 
 interface ChatMessage {
   id: string;
@@ -54,6 +52,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ manualContextText }) => {
       try {
         const genAI = new GoogleGenAI({ apiKey });
         setAi(genAI);
+        setError(null);
         setApiKeyAvailable(true);
       } catch (e) {
         console.error("Failed to initialize GoogleGenAI:", e);
@@ -62,6 +61,15 @@ const Chatbot: React.FC<ChatbotProps> = ({ manualContextText }) => {
       }
     } else {
       console.warn("API_KEY for chatbot is not set. Chatbot AI features will be disabled.");
+      setAi(null);
+      setChat(null);
+      setMessages([
+        {
+          id: 'initial-no-key',
+          text: 'API 키를 설정하면 챗봇을 사용할 수 있습니다. 상단의 **API Key 설정**에서 키를 입력해주세요.',
+          isUser: false,
+        },
+      ]);
       setError("AI 챗봇 기능을 사용하려면 API 키가 필요합니다.");
       setApiKeyAvailable(false);
     }

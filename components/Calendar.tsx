@@ -492,8 +492,11 @@ ${manualContextText}
           className="bg-slate-800 p-5 sm:p-6 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col text-slate-100 border border-slate-700"
           onClick={(e) => e.stopPropagation()} 
         >
-          <div className="flex justify-between items-center mb-4 flex-shrink-0">
-            <h3 id="event-modal-title" className="text-lg font-semibold text-cyan-400 pr-8">{selectedEvent.title}</h3>
+          <div className="flex justify-between items-start mb-4 flex-shrink-0 gap-3">
+            <div className="min-w-0">
+              <h3 id="event-modal-title" className="text-lg font-semibold text-cyan-400 truncate">{selectedEvent.title}</h3>
+              <p className="text-xs text-slate-400 mt-0.5">AI 보고서</p>
+            </div>
             <button 
               onClick={() => setSelectedEvent(null)}
               className="p-1 text-slate-400 hover:text-slate-200 transition-colors rounded-full hover:bg-slate-700"

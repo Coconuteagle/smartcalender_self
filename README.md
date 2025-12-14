@@ -2,15 +2,14 @@
 
 ## 로컬 실행
 
-**권장 Node.js:** 20 LTS (현재 Node 24에서는 `vite build`가 크래시 날 수 있습니다)
+**권장 Node.js:** 20 LTS 이상
 
 1. 설치: `npm install`
 2. 실행: `npm run dev`
-3. 접속: 콘솔에 표시된 주소로 접속 (예: `http://127.0.0.1:5174/smartcalender_self/`)
+3. 접속: 콘솔에 표시된 주소로 접속 (예: `http://127.0.0.1:5174/`)
 
 ## Gemini API Key 입력
 
 - 로그인/파이어베이스 없이 동작합니다.
 - 화면 상단 `API Key 설정`에서 각 사용자가 본인 키를 입력합니다.
 - 키는 브라우저 `localStorage`에만 저장됩니다.
-
