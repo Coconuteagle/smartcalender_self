@@ -2,11 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GoogleGenAI, Chat, GenerateContentResponse, GroundingChunk } from "@google/genai";
 import { marked } from 'marked';
-import { useAuth } from '../contexts/AuthContext';
-import LoginPromptModal from './LoginPromptModal';
 import { useApiKey } from '../contexts/ApiKeyContext';
-
-// const API_KEY = import.meta.env.VITE_API_KEY; // Removed in favor of BYOK
 
 const SendIcon: React.FC<{ className?: string }> = ({ className = "w-5 h-5" }) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className={className}>
@@ -39,9 +35,7 @@ interface ChatbotProps {
 }
 
 const Chatbot: React.FC<ChatbotProps> = ({ manualContextText }) => {
-  const { isAuthenticated } = useAuth();
-  const { apiKey } = useApiKey(); // Use API key from context
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const { apiKey } = useApiKey();
   const [ai, setAi] = useState<GoogleGenAI | null>(null);
   const [chat, setChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -56,19 +50,17 @@ const Chatbot: React.FC<ChatbotProps> = ({ manualContextText }) => {
   useEffect(() => {
     if (apiKey) {
       try {
-        const genAI = new GoogleGenAI({ apiKey: apiKey });
+        const genAI = new GoogleGenAI({ apiKey });
         setAi(genAI);
         setApiKeyAvailable(true);
-        setError(null);
       } catch (e) {
         console.error("Failed to initialize GoogleGenAI:", e);
         setError("AI 서비스 초기화에 실패했습니다. API 키 형식을 확인해주세요.");
         setApiKeyAvailable(false);
       }
     } else {
-      // console.warn("API_KEY for chatbot is not set.");
-      // setError("AI 챗봇 기능을 사용하려면 API 키 설정이 필요합니다.");
-      // Quietly wait for key, Modal handles the UI prompting
+      console.warn("API_KEY for chatbot is not set. Chatbot AI features will be disabled.");
+      setError("AI 챗봇 기능을 사용하려면 API 키가 필요합니다.");
       setApiKeyAvailable(false);
     }
   }, [apiKey]);
@@ -108,10 +100,6 @@ const Chatbot: React.FC<ChatbotProps> = ({ manualContextText }) => {
   useEffect(scrollToBottom, [messages]);
 
   const handleSendMessage = useCallback(async () => {
-    if (!isAuthenticated) {
-      setIsLoginModalOpen(true);
-      return;
-    }
     if (!userInput.trim() || !chat || isLoading || !apiKeyAvailable) return;
 
     const userMessageText = userInput.trim();
@@ -281,7 +269,6 @@ const Chatbot: React.FC<ChatbotProps> = ({ manualContextText }) => {
           </button>
         </div>
       </div>
-      <LoginPromptModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
     </div>
   );
 };

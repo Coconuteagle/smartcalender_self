@@ -2,8 +2,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
-import { AuthProvider } from './contexts/AuthContext';
 import { BrowserRouter } from 'react-router-dom';
+import { ApiKeyProvider } from './contexts/ApiKeyContext';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -13,10 +13,10 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <AuthProvider>
-      <BrowserRouter>
+    <ApiKeyProvider>
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
         <App />
       </BrowserRouter>
-    </AuthProvider>
+    </ApiKeyProvider>
   </React.StrictMode>
 );

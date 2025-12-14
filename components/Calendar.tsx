@@ -3,11 +3,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { KOREAN_MONTH_NAMES, KOREAN_DAY_NAMES_SHORT } from '../constants';
 import { GoogleGenAI, GenerateContentResponse, GroundingChunk } from "@google/genai";
 import { marked } from 'marked';
-import { useAuth } from '../contexts/AuthContext';
-import LoginPromptModal from './LoginPromptModal';
+import { useApiKey } from '../contexts/ApiKeyContext';
 
-// 깃 커밋 테스트 Assume process.env.API_KEY is available in the environment
-const API_KEY = import.meta.env.VITE_API_KEY;
 
 const PrevIcon: React.FC = () => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-slate-400 group-hover:text-cyan-400 transition-colors">
@@ -70,8 +67,7 @@ const loadingMessages = [
 ];
 
 const Calendar: React.FC<CalendarProps> = ({ scheduleText, manualContextText }) => {
-  const { isAuthenticated } = useAuth();
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const { apiKey } = useApiKey();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   
@@ -88,10 +84,10 @@ const Calendar: React.FC<CalendarProps> = ({ scheduleText, manualContextText }) 
 
 
   let ai: GoogleGenAI | null = null;
-  if (API_KEY) {
-    ai = new GoogleGenAI({ apiKey: API_KEY });
+  if (apiKey) {
+    ai = new GoogleGenAI({ apiKey });
   } else {
-    console.warn("API_KEY is not set. AI features will be disabled.");
+    console.warn("API key is not set. AI features will be disabled.");
   }
 
   useEffect(() => {
@@ -283,10 +279,6 @@ ${manualContextText}
 
 
   const handleEventClick = (event: CalendarEvent): void => {
-    if (!isAuthenticated) {
-      setIsLoginModalOpen(true);
-      return;
-    }
     setSelectedEvent(event);
     setGenerationError(null); 
     if (!eventDescriptions[event.id] && ai) {
@@ -604,7 +596,7 @@ ${manualContextText}
                 )}
               </>
             )}
-            {!API_KEY && (!selectedEvent?.id || (!eventDescriptions[selectedEvent!.id] && !isGeneratingDescription && !generationError)) && (
+            {!apiKey && (!selectedEvent?.id || (!eventDescriptions[selectedEvent!.id] && !isGeneratingDescription && !generationError)) && (
               <div className="text-sm text-yellow-400 bg-yellow-900/20 border border-yellow-700 p-3 rounded-md mt-3">
                   AI 기능을 사용하려면 API 키가 필요합니다. 현재 설정되어 있지 않습니다.
               </div>
@@ -639,7 +631,6 @@ ${manualContextText}
       {renderDaysOfWeek()}
       {renderCalendarCells()}
       {renderEventModal()}
-      <LoginPromptModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
     </div>
   );
 };

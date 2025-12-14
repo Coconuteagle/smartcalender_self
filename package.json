@@ -1,12 +1,14 @@
 {
   "name": "maum-on-calendar",
   "version": "0.0.0",
+  "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:local": "vite --host 127.0.0.1 --port 5174 --strictPort",
     "build": "vite build",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist"
   },
@@ -14,7 +16,6 @@
     "@google/genai": "*",
     "@tosspayments/payment-widget-sdk": "*",
     "@tosspayments/tosspayments-sdk": "^2.5.0",
-    "firebase": "^12.6.0",
     "framer-motion": "*",
     "lucide-react": "*",
     "marked": "*",
