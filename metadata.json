@@ -1,0 +1,6 @@
+{
+  "name": "마음ON 학교행정 스마트캘린더",
+  "description": "React와 Tailwind CSS를 사용하여 만든 간단한 인터랙티브 달력 애플리케이션입니다. 사용자는 월별로 탐색하고 현재 날짜를 시각적으로 확인할 수 있습니다. (A simple interactive calendar application built with React and Tailwind CSS. Users can navigate through months and visually identify the current date.)",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
