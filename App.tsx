@@ -10,6 +10,8 @@ import FailPage from './components/FailPage';
 import { useAuth } from './contexts/AuthContext';
 import { scheduleData } from './data/scheduleData.ts';
 import { manualData } from './data/manualData.ts';
+import { ApiKeyProvider } from './contexts/ApiKeyContext';
+import ApiKeyModal from './components/ApiKeyModal';
 
 const HowToUsePanel: React.FC = () => (
   <div className="bg-slate-800 p-4 sm:p-6 rounded-xl shadow-lg border border-slate-700 h-full flex flex-col">
@@ -93,14 +95,14 @@ const MainLayout = () => (
         <div className="md:w-[20%] w-full order-1 md:order-1 flex flex-col h-[400px] sm:h-[500px] md:h-[650px]">
           <HowToUsePanel />
         </div>
-      <div className="md:w-[55%] w-full order-2 md:order-2 flex flex-col md:min-h-0">
-        <div className="w-full md:flex-grow">
-          <Calendar scheduleText={scheduleData} manualContextText={manualData} />
+        <div className="md:w-[55%] w-full order-2 md:order-2 flex flex-col md:min-h-0">
+          <div className="w-full md:flex-grow">
+            <Calendar scheduleText={scheduleData} manualContextText={manualData} />
+          </div>
         </div>
-      </div>
-      <div className="md:w-[25%] w-full order-3 md:order-3 flex flex-col h-[400px] sm:h-[500px] md:h-[650px]">
-        <Chatbot manualContextText={manualData} />
-      </div>
+        <div className="md:w-[25%] w-full order-3 md:order-3 flex flex-col h-[400px] sm:h-[500px] md:h-[650px]">
+          <Chatbot manualContextText={manualData} />
+        </div>
       </div>
     </main>
   </div>
@@ -108,14 +110,17 @@ const MainLayout = () => (
 
 const App: React.FC = () => {
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/signup" element={<Signup />} />
-      <Route path="/payment" element={<Payment />} />
-      <Route path="/success" element={<SuccessPage />} />
-      <Route path="/fail" element={<FailPage />} />
-      <Route path="/" element={<MainLayout />} />
-    </Routes>
+    <ApiKeyProvider>
+      <ApiKeyModal />
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
+        <Route path="/payment" element={<Payment />} />
+        <Route path="/success" element={<SuccessPage />} />
+        <Route path="/fail" element={<FailPage />} />
+        <Route path="/" element={<MainLayout />} />
+      </Routes>
+    </ApiKeyProvider>
   );
 };
 

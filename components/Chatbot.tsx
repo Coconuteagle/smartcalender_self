@@ -4,8 +4,9 @@ import { GoogleGenAI, Chat, GenerateContentResponse, GroundingChunk } from "@goo
 import { marked } from 'marked';
 import { useAuth } from '../contexts/AuthContext';
 import LoginPromptModal from './LoginPromptModal';
+import { useApiKey } from '../contexts/ApiKeyContext';
 
-const API_KEY = import.meta.env.VITE_API_KEY;
+// const API_KEY = import.meta.env.VITE_API_KEY; // Removed in favor of BYOK
 
 const SendIcon: React.FC<{ className?: string }> = ({ className = "w-5 h-5" }) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className={className}>
@@ -14,15 +15,15 @@ const SendIcon: React.FC<{ className?: string }> = ({ className = "w-5 h-5" }) =
 );
 
 const BotIcon: React.FC<{ className?: string }> = ({ className = "w-6 h-6" }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
-        <path fillRule="evenodd" d="M4.5 3.75a3 3 0 00-3 3v10.5a3 3 0 003 3h15a3 3 0 003-3V6.75a3 3 0 00-3-3h-15zm4.125 3a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0zM15.375 3a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0zM19.5 6.75a1.125 1.125 0 11-2.25 0 1.125 1.125 0 012.25 0zM10.875 12a3.375 3.375 0 00-3.375 3.375h6.75A3.375 3.375 0 0010.875 12zM4.125 13.875a1.125 1.125 0 100-2.25 1.125 1.125 0 000 2.25z" clipRule="evenodd" />
-    </svg>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
+    <path fillRule="evenodd" d="M4.5 3.75a3 3 0 00-3 3v10.5a3 3 0 003 3h15a3 3 0 003-3V6.75a3 3 0 00-3-3h-15zm4.125 3a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0zM15.375 3a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0zM19.5 6.75a1.125 1.125 0 11-2.25 0 1.125 1.125 0 012.25 0zM10.875 12a3.375 3.375 0 00-3.375 3.375h6.75A3.375 3.375 0 0010.875 12zM4.125 13.875a1.125 1.125 0 100-2.25 1.125 1.125 0 000 2.25z" clipRule="evenodd" />
+  </svg>
 );
 
 const UserIcon: React.FC<{ className?: string }> = ({ className = "w-6 h-6" }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
-        <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM3.751 20.105a8.25 8.25 0 0116.498 0 .75.75 0 01-.437.695A18.683 18.683 0 0112 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 01-.437-.695z" clipRule="evenodd" />
-    </svg>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
+    <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM3.751 20.105a8.25 8.25 0 0116.498 0 .75.75 0 01-.437.695A18.683 18.683 0 0112 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 01-.437-.695z" clipRule="evenodd" />
+  </svg>
 );
 
 
@@ -34,11 +35,12 @@ interface ChatMessage {
 }
 
 interface ChatbotProps {
-    manualContextText?: string;
+  manualContextText?: string;
 }
 
 const Chatbot: React.FC<ChatbotProps> = ({ manualContextText }) => {
   const { isAuthenticated } = useAuth();
+  const { apiKey } = useApiKey(); // Use API key from context
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [ai, setAi] = useState<GoogleGenAI | null>(null);
   const [chat, setChat] = useState<Chat | null>(null);
@@ -52,22 +54,24 @@ const Chatbot: React.FC<ChatbotProps> = ({ manualContextText }) => {
   const inputRef = useRef<null | HTMLInputElement>(null);
 
   useEffect(() => {
-    if (API_KEY) {
+    if (apiKey) {
       try {
-        const genAI = new GoogleGenAI({ apiKey: API_KEY });
+        const genAI = new GoogleGenAI({ apiKey: apiKey });
         setAi(genAI);
         setApiKeyAvailable(true);
+        setError(null);
       } catch (e) {
-         console.error("Failed to initialize GoogleGenAI:", e);
-         setError("AI 서비스 초기화에 실패했습니다. API 키 형식을 확인해주세요.");
-         setApiKeyAvailable(false);
+        console.error("Failed to initialize GoogleGenAI:", e);
+        setError("AI 서비스 초기화에 실패했습니다. API 키 형식을 확인해주세요.");
+        setApiKeyAvailable(false);
       }
     } else {
-      console.warn("API_KEY for chatbot is not set. Chatbot AI features will be disabled.");
-      setError("AI 챗봇 기능을 사용하려면 API 키가 필요합니다.");
+      // console.warn("API_KEY for chatbot is not set.");
+      // setError("AI 챗봇 기능을 사용하려면 API 키 설정이 필요합니다.");
+      // Quietly wait for key, Modal handles the UI prompting
       setApiKeyAvailable(false);
     }
-  }, []);
+  }, [apiKey]);
 
   useEffect(() => {
     if (ai && apiKeyAvailable) {
@@ -76,7 +80,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ manualContextText }) => {
       if (manualContextText) {
         systemInstructionContent += `\n\nAdditionally, you have access to the following table of contents from a school administration manual. When a user's query relates to topics covered in this manual, please reference the relevant sections or page numbers in your response if applicable. If you use information from this manual, please try to cite it (e.g., "학교행정업무매뉴얼 제10편, 168p 참조").\n\n--- SCHOOL ADMINISTRATION MANUAL (TABLE OF CONTENTS) START ---\n${manualContextText}\n--- SCHOOL ADMINISTRATION MANUAL (TABLE OF CONTENTS) END ---`;
       }
-      
+
       try {
         const newChat = ai.chats.create({
           model: 'gemini-2.5-flash',
@@ -137,9 +141,9 @@ const Chatbot: React.FC<ChatbotProps> = ({ manualContextText }) => {
           );
           accumulatedSources = [...accumulatedSources, ...newSources];
         }
-        
-        setMessages(prev => prev.map(msg => 
-            msg.id === aiMessageId 
+
+        setMessages(prev => prev.map(msg =>
+          msg.id === aiMessageId
             ? { ...msg, text: accumulatedText, sources: accumulatedSources }
             : msg
         ));
@@ -149,18 +153,18 @@ const Chatbot: React.FC<ChatbotProps> = ({ manualContextText }) => {
       let errorMsg = "메시지 전송 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
       if (e instanceof Error) {
         if (e.message.includes("API key not valid")) {
-            errorMsg = "API 키가 유효하지 않습니다. 관리자에게 문의하세요.";
+          errorMsg = "API 키가 유효하지 않습니다. 관리자에게 문의하세요.";
         } else if (e.message.includes("quota")) {
-            errorMsg = "API 사용량 할당량을 초과했습니다.";
-        } else if (e.message.toLowerCase().includes("network error") || e.message.toLowerCase().includes("failed to fetch")){
-            errorMsg = "네트워크 오류가 발생했습니다. 인터넷 연결을 확인해주세요.";
+          errorMsg = "API 사용량 할당량을 초과했습니다.";
+        } else if (e.message.toLowerCase().includes("network error") || e.message.toLowerCase().includes("failed to fetch")) {
+          errorMsg = "네트워크 오류가 발생했습니다. 인터넷 연결을 확인해주세요.";
         }
       }
       setError(errorMsg);
-      setMessages(prev => prev.map(msg => 
-        msg.id === aiMessageId 
-        ? { ...msg, text: `오류: ${errorMsg}`, sources: [] } 
-        : msg
+      setMessages(prev => prev.map(msg =>
+        msg.id === aiMessageId
+          ? { ...msg, text: `오류: ${errorMsg}`, sources: [] }
+          : msg
       ));
     } finally {
       setIsLoading(false);
@@ -174,7 +178,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ manualContextText }) => {
       handleSendMessage();
     }
   };
-  
+
   const renderMessageText = (text: string) => {
     const html = marked.parse(text, { breaks: true, gfm: true });
     const styledHtml = (html as string)
@@ -196,8 +200,8 @@ const Chatbot: React.FC<ChatbotProps> = ({ manualContextText }) => {
           {error}
         </div>
       )}
-      {apiKeyAvailable && error && !messages.find(m => m.text.includes(error || '')) && ( 
-         <div className="p-3 my-2 text-sm text-red-400 bg-red-800/30 border border-red-700 rounded-md text-center flex-shrink-0">
+      {apiKeyAvailable && error && !messages.find(m => m.text.includes(error || '')) && (
+        <div className="p-3 my-2 text-sm text-red-400 bg-red-800/30 border border-red-700 rounded-md text-center flex-shrink-0">
           {error}
         </div>
       )}
@@ -210,14 +214,13 @@ const Chatbot: React.FC<ChatbotProps> = ({ manualContextText }) => {
               {!msg.isUser && <BotIcon className="w-5 h-5 text-cyan-400 mr-2 mt-1 flex-shrink-0" />}
               {msg.isUser && <UserIcon className="w-5 h-5 text-sky-400 ml-2 mt-1 flex-shrink-0" />}
               <div
-                className={`px-3 py-2 rounded-lg ${
-                  msg.isUser
+                className={`px-3 py-2 rounded-lg ${msg.isUser
                     ? 'bg-sky-700 text-white rounded-br-none'
                     : 'bg-slate-700 text-slate-200 rounded-bl-none'
-                }`}
+                  }`}
               >
                 <div className="prose prose-sm prose-invert max-w-none chatbot-message-content">
-                    {renderMessageText(msg.text)}
+                  {renderMessageText(msg.text)}
                 </div>
               </div>
             </div>
@@ -227,17 +230,17 @@ const Chatbot: React.FC<ChatbotProps> = ({ manualContextText }) => {
                 <ul className="list-disc list-inside space-y-0.5">
                   {msg.sources.map((source, index) => (
                     source.web && source.web.uri && (
-                        <li key={`${msg.id}-src-${index}`}>
+                      <li key={`${msg.id}-src-${index}`}>
                         <a
-                            href={source.web.uri}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="hover:text-cyan-400 underline"
-                            title={source.web.title || source.web.uri}
+                          href={source.web.uri}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="hover:text-cyan-400 underline"
+                          title={source.web.title || source.web.uri}
                         >
-                            {source.web.title || source.web.uri}
+                          {source.web.title || source.web.uri}
                         </a>
-                        </li>
+                      </li>
                     )
                   ))}
                 </ul>
